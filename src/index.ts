@@ -1,7 +1,7 @@
-require('dotenv').config();
+require('dotenv').config()
 
-import { Markup, Telegraf } from 'telegraf';
-import axios from 'axios';
+import { Markup, Telegraf } from 'telegraf'
+import axios from 'axios'
 
 type ProductStatus = "FULL" | "ONGOING" | "INTERESTING"
 
@@ -21,7 +21,7 @@ type Currency = {
   };
 
 type KuCoinResponse = {
-    data: Currency[];
+    data: Currency[]
   };
 
 type Offer = {
@@ -53,6 +53,13 @@ const getKuCoinData = async (): Promise<CoinOffer[]> => {
 
     console.log(status)
 
+    if(status !== 200) {
+        return [{
+            name: 'Error Retrieving data',
+            offers: []
+        }]
+    }
+
     const mapped = data.data
     .filter(coin => coins.includes(coin.currency))
     .map(coin => {
@@ -68,7 +75,6 @@ const getKuCoinData = async (): Promise<CoinOffer[]> => {
                 case 0: term = 'Flexible'; break;
                 default: term = `${duration} days`
             }
-            // console.log(totalAPR)
 
             const res = {
                 term,
@@ -91,6 +97,8 @@ const getKuCoinData = async (): Promise<CoinOffer[]> => {
     return mapped
 }
 
+// getKuCoinData().then(console.log)
+
 const formatReply = (data: CoinOffer[]): string => {
     let text = ''
 
@@ -107,31 +115,49 @@ const formatReply = (data: CoinOffer[]): string => {
     return text
 }
 
-// getKuCoinData().then(console.log)
+const intervals: { [x: string]: NodeJS.Timer | null } = {
+    'kucoin': null
+}
 
-const bot = new Telegraf(process.env.TELEGRAM_BOT_API_KEY as string);
+const kucoinCb = async (ctx: any) => {
+    const data = await getKuCoinData()
+
+    ctx.replyWithHTML(formatReply(data))
+}
+
+const bot = new Telegraf(process.env.TELEGRAM_BOT_API_KEY!);
 
 bot.start((ctx) => ctx.reply('Welcome'));
-
-bot.command('kucoin', async (ctx) => {
-    const data = await getKuCoinData()
-    
-    ctx.replyWithHTML(formatReply(data))
+bot.help((ctx) => {
+    ctx.replyWithHTML(`
+        <b>Commands</b>
+        1. /kucoin - retrieves KuCoin rates and kicksoff 15 min updates
+        2. /stop - stops the udpates
+    `)
 })
 
-bot.action('KuCoin', async (ctx) => {
-    const data = await getKuCoinData()
-    
-    ctx.replyWithHTML(formatReply(data))
+bot.command('kucoin', kucoinCb)
+bot.action('KuCoin', (ctx) => {
+    intervals['kucoin'] = setInterval(kucoinCb, 15 * 60 * 1000, ctx)
+    kucoinCb(ctx)
+})
+
+bot.command('stop', (ctx) => {
+    const kuCoinTimer = intervals['kucoin']
+    if(kuCoinTimer) {
+        clearInterval(kuCoinTimer)
+    }
+
+    ctx.reply("Updates are paused")
 })
 
 bot.on('text', async (ctx) => {
 
     const { chat } = ctx.message
-    console.log("id", chat.id)
+    console.log("recevied messages from chat ID: ", chat.id)
 
     ctx.reply(
-        'Select CEX to see the rates',
+        'Hey👋 Please select CEX to see the earn rates',
         Markup.inlineKeyboard([
           Markup.button.callback('KuCoin', 'KuCoin'),
         ])
